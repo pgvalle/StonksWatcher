@@ -53,6 +53,10 @@ Environment variables:
 
 - `TELEGRAM_BOT_TOKEN` - required Telegram bot token from BotFather.
 - `STONKER_DB_PATH` - optional SQLite database path. Defaults to `./investments.db`.
+- `STONKER_STOCK_PROVIDER` - optional single stock provider. Supported: `stocksocket`, `yahoo`, `stooq`.
+- `STONKER_STOCK_PROVIDERS` - optional comma-separated provider list, for example `stocksocket,yahoo`. Takes priority over `STONKER_STOCK_PROVIDER`.
+- `STONKER_POLL_INTERVAL_MS` - optional polling interval for `yahoo`/`stooq`. Defaults to `60000`; minimum is `15000`.
+- `STONKER_STOOQ_SUFFIX` - optional suffix for bare Stooq symbols. Defaults to `.us`, so `AAPL` becomes `aapl.us`.
 
 ### Tests
 
@@ -106,11 +110,32 @@ Deleting a ticker from `watchlist` cascades and deletes its `investment` row.
 
 This is alpha software; old local database layouts may be discarded during cleanup. If something looks wrong, stop the bot and remove the configured `STONKER_DB_PATH` database file.
 
-## Stock price provider
+## Stock price providers
 
-Stock price watching is isolated behind `src/stocks.js`.
-The current implementation still uses `stocksocket`, but the Telegram bot no longer imports it directly.
-This keeps command handling independent from the provider and makes it easier to replace `stocksocket` with a polling or API-based provider later.
+Stock price watching is isolated behind `src/stocks.js`, so Telegram command handling is independent from market-data providers.
+
+Supported providers:
+
+- `stocksocket` - websocket-based provider from the archived `stocksocket` package. No API key required.
+- `yahoo` - polling provider using Yahoo Finance's unofficial quote endpoint. No API key required, but it is unofficial and can break or rate-limit.
+- `stooq` - polling provider using Stooq CSV quotes. No API key required, but quotes are delayed/limited and bare tickers default to the `.us` suffix.
+
+Provider configuration examples:
+
+```sh
+# default
+STONKER_STOCK_PROVIDERS=stocksocket
+
+# polling-only, free/no-key fallback
+STONKER_STOCK_PROVIDERS=yahoo
+
+# combined live + polling updates
+STONKER_STOCK_PROVIDERS=stocksocket,yahoo
+
+# Stooq polling every 2 minutes
+STONKER_STOCK_PROVIDERS=stooq
+STONKER_POLL_INTERVAL_MS=120000
+```
 
 The provider module exposes:
 
@@ -118,6 +143,8 @@ The provider module exposes:
 - `unwatchTicker(ticker)`
 - `isWatching(ticker)`
 - `getWatchedTickers()`
+- `getProviderNames()`
+- `close()`
 
 ## Motivation
 
@@ -160,7 +187,7 @@ because this requirement was just complicating everything.
   But all the options I had required stuff like creating an account or having a spare phone number.
   Telegram turned out to be a better option.
 - **Stock provider abstraction** - `src/stocks.js` isolates stock price watching from bot command handling.
-  It currently wraps [gregtuc/StockSocket](https://github.com/gregtuc/StockSocket), which is archived but still works.
+  It supports StockSocket, Yahoo Finance polling, and Stooq polling.
 - **[Docker](https://www.docker.com/)** - A friend of mine suggested me to use docker.
   I think it was a great idea.
 
