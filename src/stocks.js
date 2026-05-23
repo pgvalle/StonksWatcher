@@ -1,5 +1,11 @@
 const MIN_POLL_INTERVAL_MS = 15_000
 const DEFAULT_POLL_INTERVAL_MS = 60_000
+const DEFAULT_REALTIME_CHECK_TIMEOUT_MS = 5_000
+const REALTIME_URL = 'wss://streamer.finance.yahoo.com'
+
+let providers = null
+let providersInit = null
+const watchedTickers = new Set()
 
 function normalizeTicker(ticker) {
     return ticker.toUpperCase()
@@ -11,6 +17,16 @@ function parsePollInterval() {
     return Math.max(raw, MIN_POLL_INTERVAL_MS)
 }
 
+function parseRealtimeCheckTimeout() {
+    const raw = Number(process.env.STONKER_REALTIME_CHECK_TIMEOUT_MS)
+    if (!Number.isFinite(raw) || raw <= 0) return DEFAULT_REALTIME_CHECK_TIMEOUT_MS
+    return raw
+}
+
+function autoFallbackEnabled() {
+    return process.env.STONKER_AUTO_FALLBACK !== 'false'
+}
+
 function normalizeUpdate(ticker, data) {
     const id = normalizeTicker(data?.id || data?.symbol || ticker)
     const price = Number(data?.price)
@@ -19,16 +35,65 @@ function normalizeUpdate(ticker, data) {
     return { id, price }
 }
 
+function getWebSocketImpl() {
+    return globalThis.WebSocket || require('isomorphic-ws')
+}
+
+function checkRealtimeAvailable(timeoutMs = parseRealtimeCheckTimeout()) {
+    if (process.env.STONKER_FORCE_REALTIME_UNAVAILABLE === 'true') {
+        return Promise.resolve(false)
+    }
+
+    return new Promise((resolve) => {
+        let ws
+        let settled = false
+        let opened = false
+
+        function finish(available) {
+            if (settled) return
+            settled = true
+            clearTimeout(timeout)
+
+            try {
+                ws?.close()
+            } catch (_) {
+                // Best-effort cleanup only.
+            }
+
+            resolve(available)
+        }
+
+        const timeout = setTimeout(() => finish(false), timeoutMs)
+
+        try {
+            const WebSocketImpl = getWebSocketImpl()
+            ws = new WebSocketImpl(REALTIME_URL)
+
+            ws.onopen = () => {
+                opened = true
+                finish(true)
+            }
+
+            ws.onerror = () => finish(false)
+            ws.onclose = () => {
+                if (!opened) finish(false)
+            }
+        } catch (_) {
+            finish(false)
+        }
+    })
+}
+
 function createStockSocketProvider() {
     const stockSocket = require('stocksocket') // https://github.com/gregtuc/StockSocket
-    const watchedTickers = new Set()
+    const providerWatchedTickers = new Set()
 
     return {
         name: 'stocksocket',
 
         watch(ticker, onUpdate) {
             const normalized = normalizeTicker(ticker)
-            if (watchedTickers.has(normalized)) return false
+            if (providerWatchedTickers.has(normalized)) return false
 
             stockSocket.addTicker(normalized, async (data) => {
                 const update = normalizeUpdate(normalized, data)
@@ -37,16 +102,16 @@ function createStockSocketProvider() {
                 await onUpdate(update)
             })
 
-            watchedTickers.add(normalized)
+            providerWatchedTickers.add(normalized)
             return true
         },
 
         unwatch(ticker) {
             const normalized = normalizeTicker(ticker)
-            if (!watchedTickers.has(normalized)) return false
+            if (!providerWatchedTickers.has(normalized)) return false
 
             stockSocket.removeTicker(normalized)
-            watchedTickers.delete(normalized)
+            providerWatchedTickers.delete(normalized)
             return true
         },
     }
@@ -200,8 +265,6 @@ async function fetchStooqQuotes(tickers) {
 }
 
 const providerFactories = {
-    stocksocket: createStockSocketProvider,
-    socket: createStockSocketProvider,
     yahoo: () => createPollingProvider('yahoo', fetchYahooQuotes),
     stooq: () => createPollingProvider('stooq', fetchStooqQuotes),
 }
@@ -214,33 +277,69 @@ function configuredProviderNames() {
     const names = raw.split(',')
         .map((name) => name.trim().toLowerCase())
         .filter(Boolean)
+        .map((name) => name == 'socket' ? 'stocksocket' : name)
 
     return [...new Set(names)]
 }
 
-function createProviders() {
-    const providers = []
+function ensureFallbackProvider(providersList, requestedNames, reason) {
+    if (!autoFallbackEnabled()) return
+    if (providersList.length > 0) return
+    if (!requestedNames.includes('stocksocket')) return
 
-    for (const name of configuredProviderNames()) {
+    console.warn(`${reason} Falling back to yahoo polling.`)
+    providersList.push(providerFactories.yahoo())
+}
+
+async function createProviders() {
+    const activeProviders = []
+    const requestedNames = configuredProviderNames()
+
+    for (const name of requestedNames) {
+        if (name == 'stocksocket') {
+            const available = await checkRealtimeAvailable()
+            if (!available) {
+                console.warn(`StockSocket realtime endpoint is unavailable: ${REALTIME_URL}`)
+                continue
+            }
+
+            activeProviders.push(createStockSocketProvider())
+            continue
+        }
+
         const factory = providerFactories[name]
         if (!factory) {
             throw new Error(`Unknown stock provider "${name}". Use one of: stocksocket, yahoo, stooq.`)
         }
 
-        providers.push(factory())
+        activeProviders.push(factory())
     }
 
-    if (providers.length == 0) {
-        throw new Error('At least one stock provider must be configured.')
+    ensureFallbackProvider(
+        activeProviders,
+        requestedNames,
+        'No configured realtime provider is available.'
+    )
+
+    if (activeProviders.length == 0) {
+        throw new Error('At least one stock provider must be configured and available.')
     }
 
+    return activeProviders
+}
+
+exports.init = async () => {
+    if (providers) return providers
+    if (!providersInit) providersInit = createProviders()
+    providers = await providersInit
     return providers
 }
 
-const providers = createProviders()
-const watchedTickers = new Set()
+async function getProviders() {
+    return exports.init()
+}
 
-exports.watchTicker = (ticker, onUpdate) => {
+exports.watchTicker = async (ticker, onUpdate) => {
     const normalized = normalizeTicker(ticker)
     if (watchedTickers.has(normalized)) return false
 
@@ -253,7 +352,7 @@ exports.watchTicker = (ticker, onUpdate) => {
     }
 
     let attachedProviders = 0
-    for (const provider of providers) {
+    for (const provider of await getProviders()) {
         try {
             if (provider.watch(normalized, wrappedCallback)) attachedProviders++
         } catch (err) {
@@ -267,11 +366,11 @@ exports.watchTicker = (ticker, onUpdate) => {
     return true
 }
 
-exports.unwatchTicker = (ticker) => {
+exports.unwatchTicker = async (ticker) => {
     const normalized = normalizeTicker(ticker)
     if (!watchedTickers.has(normalized)) return false
 
-    for (const provider of providers) {
+    for (const provider of await getProviders()) {
         try {
             provider.unwatch(normalized)
         } catch (err) {
@@ -292,15 +391,17 @@ exports.getWatchedTickers = () => {
 }
 
 exports.getProviderNames = () => {
-    return providers.map((provider) => provider.name)
+    return (providers || []).map((provider) => provider.name)
 }
 
-exports.close = () => {
+exports.close = async () => {
     for (const ticker of [...watchedTickers]) {
-        exports.unwatchTicker(ticker)
+        await exports.unwatchTicker(ticker)
     }
 
-    for (const provider of providers) {
+    for (const provider of await getProviders()) {
         provider.close?.()
     }
 }
+
+exports.checkRealtimeAvailable = checkRealtimeAvailable

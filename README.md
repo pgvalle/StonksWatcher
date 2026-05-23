@@ -55,6 +55,8 @@ Environment variables:
 - `STONKER_DB_PATH` - optional SQLite database path. Defaults to `./investments.db`.
 - `STONKER_STOCK_PROVIDER` - optional single stock provider. Supported: `stocksocket`, `yahoo`, `stooq`.
 - `STONKER_STOCK_PROVIDERS` - optional comma-separated provider list, for example `stocksocket,yahoo`. Takes priority over `STONKER_STOCK_PROVIDER`.
+- `STONKER_AUTO_FALLBACK` - optional. Defaults to enabled. If `stocksocket` is configured but unavailable at startup, Stonker falls back to `yahoo` polling. Set to `false` to disable.
+- `STONKER_REALTIME_CHECK_TIMEOUT_MS` - optional timeout for the StockSocket startup availability check. Defaults to `5000`.
 - `STONKER_POLL_INTERVAL_MS` - optional polling interval for `yahoo`/`stooq`. Defaults to `60000`; minimum is `15000`.
 - `STONKER_STOOQ_SUFFIX` - optional suffix for bare Stooq symbols. Defaults to `.us`, so `AAPL` becomes `aapl.us`.
 
@@ -116,9 +118,11 @@ Stock price watching is isolated behind `src/stocks.js`, so Telegram command han
 
 Supported providers:
 
-- `stocksocket` - websocket-based provider from the archived `stocksocket` package. No API key required.
+- `stocksocket` - websocket-based provider from the archived `stocksocket` package. No API key required. Stonker checks its websocket endpoint at startup before enabling it.
 - `yahoo` - polling provider using Yahoo Finance's unofficial quote endpoint. No API key required, but it is unofficial and can break or rate-limit.
 - `stooq` - polling provider using Stooq CSV quotes. No API key required, but quotes are delayed/limited and bare tickers default to the `.us` suffix.
+
+If `stocksocket` is configured but the realtime endpoint is down at startup, Stonker logs a warning and automatically falls back to `yahoo` polling unless `STONKER_AUTO_FALLBACK=false` is set.
 
 Provider configuration examples:
 

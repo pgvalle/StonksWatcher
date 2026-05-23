@@ -163,7 +163,7 @@ async function watchCommand(args) {
 
     const added = db.addStock(ticker)
     if (added) {
-        stocks.watchTicker(ticker, updateAndNotify)
+        await stocks.watchTicker(ticker, updateAndNotify)
         await sendMsg(`Watching ${ticker}.`)
     } else {
         await sendMsg(`${ticker} is already in the watchlist.`)
@@ -191,7 +191,7 @@ async function unwatchCommand(args) {
         return
     }
 
-    stocks.unwatchTicker(ticker)
+    await stocks.unwatchTicker(ticker)
 
     const deleted = db.delStock(ticker)
     if (deleted) {
@@ -312,39 +312,49 @@ registerCommand({
 
 // RUNNING
 
-// start watching stocks i have on the db
-for (const stock of db.getStocks()) {
-    stocks.watchTicker(stock.stockTicker, updateAndNotify)
+async function main() {
+    await stocks.init()
+    console.log(`Using stock provider(s): ${stocks.getProviderNames().join(', ')}`)
+
+    // start watching stocks i have on the db
+    for (const stock of db.getStocks()) {
+        await stocks.watchTicker(stock.stockTicker, updateAndNotify)
+    }
+
+    const MSG_REGEX = /^(?!\/\S).+/s
+    bot.onText(MSG_REGEX, async (msg) => {
+        if (!isOwner(msg.chat.id)) return
+
+        try {
+            await sendMsg(msg.text)
+        } catch (err) {
+            console.error('Message handler failed:', err)
+        }
+    })
+
+    const CMD_REGEX = /^\/(?<name>\S+)(?:\s+(?<args>.*))?$/
+    bot.onText(CMD_REGEX, async (msg, match) => {
+        if (!isOwner(msg.chat.id)) return
+
+        const invalid = async (_) => {
+            await sendMsg("I don't know this command. Use `/h` to list commands.")
+        }
+
+        const cmdName = match.groups.name.toLowerCase().split('@')[0]
+        const cmd = cmds[cmdName] || invalid
+        const rawArgs = match.groups.args?.trim()
+        const args = rawArgs ? rawArgs.split(/\s+/) : []
+
+        try {
+            await cmd(args)
+        } catch (err) {
+            console.error(`Command /${cmdName} failed:`, err)
+            await sendMsg('Something went wrong while running that command.')
+        }
+    })
 }
 
-const MSG_REGEX = /^(?!\/\S).+/s
-bot.onText(MSG_REGEX, async (msg) => {
-    if (!isOwner(msg.chat.id)) return
-
-    try {
-        await sendMsg(msg.text)
-    } catch (err) {
-        console.error('Message handler failed:', err)
-    }
-})
-
-const CMD_REGEX = /^\/(?<name>\S+)(?:\s+(?<args>.*))?$/
-bot.onText(CMD_REGEX, async (msg, match) => {
-    if (!isOwner(msg.chat.id)) return
-
-    const invalid = async (_) => {
-        await sendMsg("I don't know this command. Use `/h` to list commands.")
-    }
-
-    const cmdName = match.groups.name.toLowerCase().split('@')[0]
-    const cmd = cmds[cmdName] || invalid
-    const rawArgs = match.groups.args?.trim()
-    const args = rawArgs ? rawArgs.split(/\s+/) : []
-
-    try {
-        await cmd(args)
-    } catch (err) {
-        console.error(`Command /${cmdName} failed:`, err)
-        await sendMsg('Something went wrong while running that command.')
-    }
+main().catch((err) => {
+    console.error('Failed to start Stonker:', err)
+    process.exit(1)
 })
