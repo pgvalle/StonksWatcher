@@ -1,5 +1,7 @@
 const Database = require('better-sqlite3')
-const db = new Database('./investments.db')
+
+const dbPath = process.env.STONKER_DB_PATH || './investments.db'
+const db = new Database(dbPath)
 
 // db setup
 db.prepare(`
@@ -17,9 +19,9 @@ db.prepare(`
 // EXPORTS
 
 exports.formatRow = (row) => {
-    const stockPriceStr = (row.stockPrice ? row.stockPrice.toFixed(2) : "??")
-    
-    if (!row.value) {
+    const stockPriceStr = row.stockPrice == null ? "??" : row.stockPrice.toFixed(2)
+
+    if (row.value == null) {
         const fmt = `${row.stockTicker}
                      Price: $${stockPriceStr}
                      Invested: $??`
@@ -31,8 +33,8 @@ exports.formatRow = (row) => {
 
     const fmt = `${row.stockTicker}
                  Price: $${stockPriceStr}
-                 Invested: $${row.initialValue} | Now: $${row.value.toFixed(2)}
-                 Change: ${diffStr} | Min: $${row.minValue} Max: $${row.maxValue}`
+                 Invested: $${row.initialValue.toFixed(2)} | Now: $${row.value.toFixed(2)}
+                 Change: ${diffStr} | Min: $${row.minValue.toFixed(2)} Max: $${row.maxValue.toFixed(2)}`
     return fmt.replace(/\n\s+/g, "\n")
 }
 
@@ -65,15 +67,23 @@ exports.delStock = (ticker) => {
 
 exports.updateStock = db.transaction((ticker, price) => {
     const b4 = exports.getStock(ticker)
+    if (!b4) return undefined
+
     const now = db.prepare(`
         UPDATE investment SET
-            stockPrice = @price,
-            value = value * @price / stockPrice
+            value = CASE
+                WHEN stockPrice IS NOT NULL AND value IS NOT NULL
+                THEN value * @price / stockPrice
+                ELSE value
+            END,
+            stockPrice = @price
         WHERE stockTicker == @ticker
         RETURNING *`
     ).get({ ticker, price })
+    if (!now) return undefined
 
     const inRangeX = (v, min, max) => {
+        if ([v, min, max].some((x) => x == null)) return false
         return min < v && v < max
     }
 
@@ -93,3 +103,5 @@ exports.invest = (ticker, value, diff, upDiff) => {
         RETURNING *`
     ).get({ ticker, value, diff, upDiff })
 }
+
+exports.close = () => db.close()

@@ -2,16 +2,16 @@
   "name": "stonk-watcher",
   "version": "0.0.1",
   "description": "",
-  "license": "ISC",
+  "license": "GPL-3.0-only",
   "author": "",
   "type": "commonjs",
-  "main": "src/main.js",
+  "main": "src/bot.js",
   "scripts": {
     "start": "node src/bot.js",
-    "test": "node test/db-test.js"
+    "test": "node tests/db-test.js"
   },
   "dependencies": {
-    "better-sqlite3": "^11.9.1",
+    "better-sqlite3": "^12.10.0",
     "node-telegram-bot-api": "^0.66.0",
     "stocksocket": "^2.1.2"
   }

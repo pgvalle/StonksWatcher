@@ -1,6 +1,6 @@
 # Stonker
 
-# WARNING: The current state of this piece of software is unusable and this readme is outdated
+# WARNING: This project is experimental and still under active cleanup
 
 Stonker is a Telegram bot that helps you track stock investments,
 notifying you when stock prices change.
@@ -15,7 +15,7 @@ I take no responsibility for any financial outcomes.
 
 ### 1. Requirements
 
-- Node.js **18+** (Older versions may work but are untested.)
+- Node.js **20+**
 
 ### 2. Get Your Token
 
@@ -30,7 +30,8 @@ git clone https://github.com/pgvalle/Stonker
 cd Stonker
 npm install
 export TELEGRAM_BOT_TOKEN='your_token_here'
-node src/bot.js
+# Optional: export STONKER_DB_PATH='./investments.db'
+npm start
 ```
 
 #### Option 2: With Docker
@@ -39,60 +40,52 @@ node src/bot.js
 git clone https://github.com/pgvalle/Stonker
 cd Stonker
 docker build -t stonker .
-docker run -e TELEGRAM_BOT_TOKEN='your_token_here' -d stonker
+docker run \
+  -e TELEGRAM_BOT_TOKEN='your_token_here' \
+  -e STONKER_DB_PATH='/data/investments.db' \
+  -v stonker-data:/data \
+  -d stonker
+```
+
+### Configuration
+
+Environment variables:
+
+- `TELEGRAM_BOT_TOKEN` - required Telegram bot token from BotFather.
+- `STONKER_DB_PATH` - optional SQLite database path. Defaults to `./investments.db`.
+
+### Tests
+
+```sh
+npm test
 ```
 
 ## Commands
 
-**TODO:** document commands here.
-<!-- - **/invest STOCK VALUE DIFF**
-  - Simulates stock investment.
-  - `VALUE` must be >= 1.00.
-  - `DIFF` must be > 0.00 (notification each time VALUE changes by DIFF).
-  - Reinvesting on the same stock overwrites the previous investment.
-  - Only 2 decimals are used (e.g. 0.001 -> $0.00).
-  - Example:
-    ```
-    /invest AMD 1 0.01
-    /invest AMD 1.00 1  # Overwrites previous investment
-    ```
+The bot currently uses short commands:
 
-- **/linvest [STOCK ...]**
-  - Lists your investments in specified stocks.
-  - If no arguments are provided, lists all investments.
-  - Example:
-    ```
-    /linvest
-    /linvest AMD TSLA NVDA
-    ```
+- `/h <thing>` - show help for `h`, `a`, `d`, `s`, `i`, or `ticker`.
+- `/a <ticker>` - add a ticker to the watchlist.
+- `/d <ticker>` - delete a ticker from the watchlist.
+- `/s [ticker]` - show one ticker, or list all watched tickers if omitted.
+- `/i <ticker> <value> <diff> [upDiff]` - start monitoring an investment value.
 
-- **/dinvest [STOCK ...]**
-  - Deletes your investments in specified stocks.
-  - If no arguments are provided, deletes all investments.
-  - Example:
-    ```
-    /dinvest
-    /dinvest AMD TSLA NVDA
-    ```
+Examples:
 
-- **/stock [STOCK ...]**
-  - Lists specified stocks and their last known prices.
-  - If no arguments are provided, lists all tracked stocks.
-  - The bot just knows stocks that users have invested with /invest.
-  - Example:
-    ```
-    /stock
-    /stock AMD TSLA NVDA
-    ```
+```txt
+/a TSLA
+/s TSLA
+/i TSLA 100 5
+/i NVDA 500 25 100
+/d TSLA
+```
 
-- **/help [COMMAND ...]**
-  - Shows help for specified commands.
-  - If no arguments are provided, lists all commands.
-  - Example:
-    ```
-    /help
-    /help invest stock
-    ``` -->
+`/i` notifies when the simulated investment moves in or out of the configured range:
+
+```txt
+/i MSFT 500 5      # range: 495.00 to 505.00
+/i GOOG 100 3 100  # range: 97.00 to 200.00
+```
 
 ## Motivation
 
