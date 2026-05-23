@@ -68,12 +68,12 @@ npm test
 
 ## Commands
 
-Commands have short names for speed and readable aliases for recall:
+Commands have one short name for speed and one readable name for recall:
 
 - `/h`, `/help` - list commands or show help for one command.
-- `/w`, `/watch` - watch a ticker. Legacy aliases: `/a`, `/add`.
-- `/u`, `/unwatch` - stop watching a ticker. Aliases: `/d`, `/del`, `/delete`, `/rm`, `/remove`.
-- `/s`, `/stock` - show one ticker or the full watchlist. Aliases: `/l`, `/list`.
+- `/w`, `/watch` - watch a ticker.
+- `/u`, `/unwatch` - stop watching a ticker.
+- `/s`, `/stock` - show one ticker or the full watchlist.
 - `/i`, `/invest` - create or replace an investment alert.
 
 Examples:

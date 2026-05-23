@@ -171,10 +171,9 @@ async function watchCommand(args) {
 }
 
 registerCommand({
-    names: ['w', 'watch', 'a', 'add'],
+    names: ['w', 'watch'],
     summary: 'Watch a ticker.',
     usage: '/w <ticker>',
-    details: ['Aliases /a and /add are kept for muscle memory.'],
     examples: ['/w TSLA', '/watch NVDA'],
     run: watchCommand,
 })
@@ -202,7 +201,7 @@ async function unwatchCommand(args) {
 }
 
 registerCommand({
-    names: ['u', 'unwatch', 'd', 'del', 'delete', 'rm', 'remove'],
+    names: ['u', 'unwatch'],
     summary: 'Stop watching a ticker.',
     usage: '/u <ticker>',
     details: ['Deleting a watched ticker also deletes its investment alert.'],
@@ -244,11 +243,11 @@ async function stockCommand(args) {
 }
 
 registerCommand({
-    names: ['s', 'stock', 'l', 'list'],
+    names: ['s', 'stock'],
     summary: 'Show one ticker or the full watchlist.',
     usage: '/s [ticker]',
     details: ['No arg lists the full watchlist.'],
-    examples: ['/s', '/stock NVDA', '/list'],
+    examples: ['/s', '/stock NVDA'],
     run: stockCommand,
 })
 
