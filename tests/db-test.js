@@ -1,6 +1,7 @@
 const assert = require('node:assert/strict')
 const fs = require('node:fs')
 const path = require('node:path')
+const Database = require('better-sqlite3')
 
 const testDbPath = path.join(__dirname, 'tmp-investments.db')
 process.env.STONKER_DB_PATH = testDbPath
@@ -53,5 +54,25 @@ assert.equal(db.getStock('AAPL'), undefined)
 assert.equal(db.getStocks().length, 0)
 
 db.close()
+
+const schemaDb = new Database(testDbPath)
+const tables = schemaDb.prepare(`
+    SELECT name FROM sqlite_master
+    WHERE type = 'table'
+    ORDER BY name
+`).all().map((row) => row.name)
+assert.deepEqual(tables, ['investment', 'watchlist'])
+
+const watchlistColumns = schemaDb.prepare('PRAGMA table_info(watchlist)').all().map((column) => column.name)
+const investmentColumns = schemaDb.prepare('PRAGMA table_info(investment)').all().map((column) => column.name)
+assert.deepEqual(watchlistColumns, ['stockTicker', 'stockPrice'])
+assert.deepEqual(investmentColumns, ['stockTicker', 'initialValue', 'value', 'minValue', 'maxValue'])
+
+const foreignKeys = schemaDb.prepare('PRAGMA foreign_key_list(investment)').all()
+assert.equal(foreignKeys.length, 1)
+assert.equal(foreignKeys[0].table, 'watchlist')
+assert.equal(foreignKeys[0].on_delete, 'CASCADE')
+schemaDb.close()
+
 fs.unlinkSync(testDbPath)
 console.log('db tests passed')

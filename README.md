@@ -87,6 +87,17 @@ Examples:
 /i GOOG 100 3 100  # range: 97.00 to 200.00
 ```
 
+## Data model
+
+SQLite data is split into two tables:
+
+- `watchlist` stores tracked tickers and their last known price.
+- `investment` stores the configured investment range for a watched ticker.
+
+Deleting a ticker from `watchlist` cascades and deletes its `investment` row.
+
+This is alpha software; old local database layouts may be discarded during cleanup. If something looks wrong, stop the bot and remove the configured `STONKER_DB_PATH` database file.
+
 ## Motivation
 
 A realization hit me after playing a little bit with the stock market and talking to friends:

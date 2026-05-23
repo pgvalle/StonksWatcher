@@ -3,18 +3,51 @@ const Database = require('better-sqlite3')
 const dbPath = process.env.STONKER_DB_PATH || './investments.db'
 const db = new Database(dbPath)
 
-// db setup
-db.prepare(`
-    CREATE TABLE IF NOT EXISTS investment (
-        stockTicker  VARCHAR(8) NOT NULL,
-        stockPrice   REAL,
-        initialValue REAL,
-        value        REAL,
-        minValue     REAL,
-        maxValue     REAL,
-        PRIMARY KEY (stockTicker)
-    )`
-).run()
+db.pragma('foreign_keys = ON')
+
+function tableExists(name) {
+    return !!db.prepare(`
+        SELECT name FROM sqlite_master
+        WHERE type = 'table' AND name = @name`
+    ).get({ name })
+}
+
+function tableHasColumn(table, column) {
+    return db.prepare(`PRAGMA table_info(${table})`).all()
+        .some((info) => info.name === column)
+}
+
+function createSchema() {
+    db.prepare(`
+        CREATE TABLE IF NOT EXISTS watchlist (
+            stockTicker VARCHAR(8) NOT NULL,
+            stockPrice  REAL,
+            PRIMARY KEY (stockTicker)
+        )`
+    ).run()
+
+    db.prepare(`
+        CREATE TABLE IF NOT EXISTS investment (
+            stockTicker  VARCHAR(8) NOT NULL,
+            initialValue REAL NOT NULL,
+            value        REAL NOT NULL,
+            minValue     REAL NOT NULL,
+            maxValue     REAL NOT NULL,
+            PRIMARY KEY (stockTicker),
+            FOREIGN KEY (stockTicker)
+                REFERENCES watchlist(stockTicker)
+                ON DELETE CASCADE
+        )`
+    ).run()
+}
+
+// Alpha schema cleanup: old builds stored watchlist data inside investment.
+// Drop that obsolete table shape instead of carrying migration complexity.
+if (tableExists('investment') && tableHasColumn('investment', 'stockPrice')) {
+    db.prepare('DROP TABLE investment').run()
+}
+
+createSchema()
 
 // EXPORTS
 
@@ -40,46 +73,77 @@ exports.formatRow = (row) => {
 
 exports.getStock = (ticker) => {
     return db.prepare(`
-        SELECT * FROM investment
-        WHERE stockTicker == @ticker`
+        SELECT
+            w.stockTicker,
+            w.stockPrice,
+            i.initialValue,
+            i.value,
+            i.minValue,
+            i.maxValue
+        FROM watchlist w
+        LEFT JOIN investment i ON i.stockTicker = w.stockTicker
+        WHERE w.stockTicker == @ticker`
     ).get({ ticker })
 }
 
 exports.getStocks = () => {
-    return db.prepare('SELECT * FROM investment').all()
+    return db.prepare(`
+        SELECT
+            w.stockTicker,
+            w.stockPrice,
+            i.initialValue,
+            i.value,
+            i.minValue,
+            i.maxValue
+        FROM watchlist w
+        LEFT JOIN investment i ON i.stockTicker = w.stockTicker
+        ORDER BY w.stockTicker`
+    ).all()
 }
 
 exports.addStock = (ticker) => {
-    return db.prepare(`
-        INSERT INTO investment (stockTicker) VALUES (@ticker)
+    const inserted = db.prepare(`
+        INSERT INTO watchlist (stockTicker) VALUES (@ticker)
         ON CONFLICT(stockTicker) DO NOTHING
-        RETURNING *`
+        RETURNING stockTicker`
     ).get({ ticker })
+
+    return inserted ? exports.getStock(ticker) : undefined
 }
 
-exports.delStock = (ticker) => {
-    return db.prepare(`
-        DELETE FROM investment
-        WHERE stockTicker == @ticker
-        RETURNING *`
-    ).get({ ticker })
-}
+exports.delStock = db.transaction((ticker) => {
+    const row = exports.getStock(ticker)
+    if (!row) return undefined
+
+    db.prepare(`
+        DELETE FROM watchlist
+        WHERE stockTicker == @ticker`
+    ).run({ ticker })
+
+    return row
+})
 
 exports.updateStock = db.transaction((ticker, price) => {
     const b4 = exports.getStock(ticker)
     if (!b4) return undefined
 
-    const now = db.prepare(`
-        UPDATE investment SET
-            value = CASE
-                WHEN stockPrice IS NOT NULL AND value IS NOT NULL
-                THEN value * @price / stockPrice
-                ELSE value
-            END,
-            stockPrice = @price
-        WHERE stockTicker == @ticker
-        RETURNING *`
-    ).get({ ticker, price })
+    db.prepare(`
+        UPDATE investment
+        SET value = CASE
+            WHEN @oldPrice IS NOT NULL AND @oldPrice != 0
+            THEN value * @price / @oldPrice
+            ELSE value
+        END
+        WHERE stockTicker == @ticker`
+    ).run({ ticker, price, oldPrice: b4.stockPrice })
+
+    db.prepare(`
+        UPDATE watchlist
+        SET stockPrice = @price
+        WHERE stockTicker == @ticker`
+    ).run({ ticker, price })
+
+    const now = exports.getStock(ticker)
     if (!now) return undefined
 
     const inRangeX = (v, min, max) => {
@@ -92,16 +156,21 @@ exports.updateStock = db.transaction((ticker, price) => {
     return (inRangeB4 == inRangeNow) ? undefined : now
 })
 
-exports.invest = (ticker, value, diff, upDiff) => {
-    return db.prepare(`
-        UPDATE investment SET
-            initialValue = @value,
-            value = @value,
-            minValue = @value - @diff,
-            maxValue = @value + @upDiff
-        WHERE stockTicker == @ticker AND stockPrice IS NOT NULL
-        RETURNING *`
-    ).get({ ticker, value, diff, upDiff })
-}
+exports.invest = db.transaction((ticker, value, diff, upDiff) => {
+    const stock = exports.getStock(ticker)
+    if (!stock || stock.stockPrice == null) return undefined
+
+    db.prepare(`
+        INSERT INTO investment (stockTicker, initialValue, value, minValue, maxValue)
+        VALUES (@ticker, @value, @value, @value - @diff, @value + @upDiff)
+        ON CONFLICT(stockTicker) DO UPDATE SET
+            initialValue = excluded.initialValue,
+            value = excluded.value,
+            minValue = excluded.minValue,
+            maxValue = excluded.maxValue`
+    ).run({ ticker, value, diff, upDiff })
+
+    return exports.getStock(ticker)
+})
 
 exports.close = () => db.close()
