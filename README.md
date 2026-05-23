@@ -62,29 +62,37 @@ npm test
 
 ## Commands
 
-The bot currently uses short commands:
+Commands have short names for speed and readable aliases for recall:
 
-- `/h <thing>` - show help for `h`, `a`, `d`, `s`, `i`, or `ticker`.
-- `/a <ticker>` - add a ticker to the watchlist.
-- `/d <ticker>` - delete a ticker from the watchlist.
-- `/s [ticker]` - show one ticker, or list all watched tickers if omitted.
-- `/i <ticker> <value> <diff> [upDiff]` - start monitoring an investment value.
+- `/h`, `/help` - list commands or show help for one command.
+- `/w`, `/watch` - watch a ticker. Legacy aliases: `/a`, `/add`.
+- `/u`, `/unwatch` - stop watching a ticker. Aliases: `/d`, `/del`, `/delete`, `/rm`, `/remove`.
+- `/s`, `/stock` - show one ticker or the full watchlist. Aliases: `/l`, `/list`.
+- `/i`, `/invest` - create or replace an investment alert.
 
 Examples:
 
 ```txt
-/a TSLA
-/s TSLA
+/w TSLA
+/stock TSLA
 /i TSLA 100 5
-/i NVDA 500 25 100
-/d TSLA
+/invest NVDA 500 25 100
+/u TSLA
+```
+
+Use `/h` to list commands and `/h <command>` for details:
+
+```txt
+/h
+/h invest
+/help ticker
 ```
 
 `/i` notifies when the simulated investment moves in or out of the configured range:
 
 ```txt
-/i MSFT 500 5      # range: 495.00 to 505.00
-/i GOOG 100 3 100  # range: 97.00 to 200.00
+/i MSFT 500 5        # range: 495.00 to 505.00
+/invest GOOG 100 3 100  # range: 97.00 to 200.00
 ```
 
 ## Data model
