@@ -1,5 +1,5 @@
 const TelegramBot = require('node-telegram-bot-api') // https://github.com/yagop/node-telegram-bot-api
-const sock = require('stocksocket') // https://github.com/gregtuc/StockSocket
+const stocks = require('./stocks')
 const db = require('./db')
 
 const TOKEN = process.env.TELEGRAM_BOT_TOKEN
@@ -163,7 +163,7 @@ async function watchCommand(args) {
 
     const added = db.addStock(ticker)
     if (added) {
-        sock.addTicker(ticker, updateAndNotify)
+        stocks.watchTicker(ticker, updateAndNotify)
         await sendMsg(`Watching ${ticker}.`)
     } else {
         await sendMsg(`${ticker} is already in the watchlist.`)
@@ -191,7 +191,7 @@ async function unwatchCommand(args) {
         return
     }
 
-    sock.removeTicker(ticker)
+    stocks.unwatchTicker(ticker)
 
     const deleted = db.delStock(ticker)
     if (deleted) {
@@ -314,7 +314,7 @@ registerCommand({
 
 // start watching stocks i have on the db
 for (const stock of db.getStocks()) {
-    sock.addTicker(stock.stockTicker, updateAndNotify)
+    stocks.watchTicker(stock.stockTicker, updateAndNotify)
 }
 
 const MSG_REGEX = /^(?!\/\S).+/s

@@ -106,6 +106,19 @@ Deleting a ticker from `watchlist` cascades and deletes its `investment` row.
 
 This is alpha software; old local database layouts may be discarded during cleanup. If something looks wrong, stop the bot and remove the configured `STONKER_DB_PATH` database file.
 
+## Stock price provider
+
+Stock price watching is isolated behind `src/stocks.js`.
+The current implementation still uses `stocksocket`, but the Telegram bot no longer imports it directly.
+This keeps command handling independent from the provider and makes it easier to replace `stocksocket` with a polling or API-based provider later.
+
+The provider module exposes:
+
+- `watchTicker(ticker, onUpdate)`
+- `unwatchTicker(ticker)`
+- `isWatching(ticker)`
+- `getWatchedTickers()`
+
 ## Motivation
 
 A realization hit me after playing a little bit with the stock market and talking to friends:
@@ -146,8 +159,8 @@ because this requirement was just complicating everything.
   because here in Brazil **EVERYONE** has a Whatsapp account.
   But all the options I had required stuff like creating an account or having a spare phone number.
   Telegram turned out to be a better option.
-- **[gregtuc/StockSocket](https://github.com/gregtuc/StockSocket)** - Provides real-time stock data updates via websockets.
-  It's archived, but it works.
+- **Stock provider abstraction** - `src/stocks.js` isolates stock price watching from bot command handling.
+  It currently wraps [gregtuc/StockSocket](https://github.com/gregtuc/StockSocket), which is archived but still works.
 - **[Docker](https://www.docker.com/)** - A friend of mine suggested me to use docker.
   I think it was a great idea.
 
